@@ -3,9 +3,12 @@ package docker
 var defaultConfig = config{
 	Partial: true,
 	Containers: containers{
-		IDs:    []string{},
-		Path:   "/var/lib/docker/containers",
-		Stream: "all",
+		IDs:           []string{},
+		Path:          "/var/lib/docker/containers",
+		Stream:        "all",
+		PodId:         "",
+		KubeletPath:   "/var/lib/kubelet/pods",
+		EmptyDirPaths: []string{},
 	},
 }
 
@@ -22,4 +25,8 @@ type containers struct {
 
 	// Stream can be all,stdout or stderr
 	Stream string `config:"stream"`
+
+	PodId         string   `config:"pod_id"`
+	KubeletPath   string   `config:"kubelet_path"`
+	EmptyDirPaths []string `config:"empty_dir_paths"`
 }

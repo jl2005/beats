@@ -22,6 +22,9 @@ const (
 	multiline    = "multiline"
 	includeLines = "include_lines"
 	excludeLines = "exclude_lines"
+
+	podId         = "pod_id"
+	emptyDirPaths = "empty_dir_paths"
 )
 
 // validModuleNames to sanitize user input
@@ -81,6 +84,10 @@ func (l *logHints) CreateConfig(event bus.Event) []*common.Config {
 	if elines := l.getExcludeLines(hints); len(elines) != 0 {
 		tempCfg.Put(excludeLines, elines)
 	}
+	if paths := l.getEmptyDirPaths(hints); len(paths) != 0 {
+		tempCfg.Put(podId, "${data.container.podid}")
+		tempCfg.Put(emptyDirPaths, paths)
+	}
 
 	// Merge config template with the configs from the annotations
 	if err := config.Merge(tempCfg); err != nil {
@@ -119,6 +126,10 @@ func (l *logHints) getMultiline(hints common.MapStr) common.MapStr {
 
 func (l *logHints) getIncludeLines(hints common.MapStr) []string {
 	return builder.GetHintAsList(hints, l.Key, includeLines)
+}
+
+func (l *logHints) getEmptyDirPaths(hints common.MapStr) []string {
+	return builder.GetHintAsList(hints, l.Key, emptyDirPaths)
 }
 
 func (l *logHints) getExcludeLines(hints common.MapStr) []string {

@@ -140,6 +140,7 @@ func (p *Provider) emitEvents(pod *kubernetes.Pod, flag string, containers []kub
 	// Emit container and port information
 	for _, c := range containers {
 		cmeta := common.MapStr{
+			"podid":   pod.Metadata.UID,
 			"id":      containerIDs[c.Name],
 			"name":    c.Name,
 			"image":   c.Image,

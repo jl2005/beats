@@ -42,6 +42,10 @@ func NewInput(
 		cfg.SetString("paths", idx, path.Join(config.Containers.Path, containerID, "*.log"))
 	}
 
+	for _, emptyDirPath := range config.Containers.EmptyDirPaths {
+		cfg.SetString("paths", -1, path.Join(config.Containers.KubeletPath, config.Containers.PodId, "volumes/kubernetes.io~empty-dir", emptyDirPath, "*.log"))
+	}
+
 	if err := checkStream(config.Containers.Stream); err != nil {
 		return nil, err
 	}
