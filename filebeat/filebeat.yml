@@ -11,7 +11,6 @@
 # configuration file.
 
 #=========================== Filebeat inputs =============================
-
 filebeat.inputs:
 
 # Each - is an input. Most options can be set at the input level, so
@@ -189,3 +188,32 @@ output.elasticsearch:
 # have the Elasticsearch output configured, you can simply uncomment the
 # following line.
 #xpack.monitoring.elasticsearch:
+
+#============================== autodiscover ===============================
+
+filebeat.config:
+  inputs:
+    # Mounted `filebeat-inputs` configmap:
+    path: ${path.config}/inputs.d/*.yml
+    # Reload inputs configs as they change:
+    reload.enabled: false
+  modules:
+    path: ${path.config}/modules.d/*.yml
+    # Reload module configs as they change:
+    reload.enabled: false
+filebeat.autodiscover:
+  providers:
+    - type: kubernetes
+      in_cluster: false
+      kube_config: ${HOME}/.kube/config
+      host: k8s-dbg-node-5
+      namespace: default
+      builders:
+        - type: k8sbuilder
+
+output.elasticsearch:
+  hosts: ['10.233.15.35:9200']
+  username: elastic
+  password: changeme
+
+#xpack.monitoring.enabled: true

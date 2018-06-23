@@ -306,6 +306,9 @@ func (ns *ConfigNamespace) IsSet() bool {
 	return ns.config != nil
 }
 
+func ConfigDebugString(c *Config, filterPrivate bool) string {
+	return configDebugString(c, filterPrivate)
+}
 func configDebugString(c *Config, filterPrivate bool) string {
 	var bufs []string
 
