@@ -159,7 +159,7 @@ func TestNewK8sBuilder(t *testing.T) {
 						"id":   "abc",
 					},
 					"annotations": testGetNestedAnnotations(common.MapStr{
-						"meitu.com.logs.foobar/extern_path": "/data/*.log",
+						"meitu.com.logs.foobar/extern_paths": "/data/*.log",
 						"meitu.com.logs.foobar/extern_path_conf.include_lines": "^test, ^test1",
 						"meitu.com.logs.foobar/extern_path_conf.exclude_lines": "^test2, ^test3",
 					}),
@@ -195,7 +195,7 @@ func TestNewK8sBuilder(t *testing.T) {
 						"id":   "abc",
 					},
 					"annotations": testGetNestedAnnotations(common.MapStr{
-						"meitu.com.logs.foobar/extern_path": "/data/*.log",
+						"meitu.com.logs.foobar/extern_paths": "/data/*.log",
 						"meitu.com.logs.foobar/extern_path_conf.multiline.pattern": "^test",
 						"meitu.com.logs.foobar/extern_path_conf.multiline.negate": "true",
 					}),
@@ -224,6 +224,134 @@ func TestNewK8sBuilder(t *testing.T) {
             },
 		},
 		{
+			msg: "mutil level extern path multiline config must have a multiline in the input config",
+			event: bus.Event{
+				"host": "1.2.3.4",
+				"kubernetes": common.MapStr{
+					"container": common.MapStr{
+						"name": "foobar",
+						"id":   "abc",
+					},
+					"annotations": testGetNestedAnnotations(common.MapStr{
+						"meitu.com.logs.foobar/extern_paths": "/data/*/*.log",
+						"meitu.com.logs.foobar/extern_path_conf.multiline.pattern": "^test",
+						"meitu.com.logs.foobar/extern_path_conf.multiline.negate": "true",
+					}),
+				},
+				"container": common.MapStr{
+					"name": "foobar",
+					"id":   "abc",
+				},
+			},
+			len: 2,
+			result: []common.MapStr{ 
+                common.MapStr{
+					"type": "docker",
+					"containers": map[string]interface{}{
+						"ids": []interface{}{"abc"},
+					},
+				},
+                common.MapStr{
+					"type": "log",
+                    "paths": []interface{} {"/node/path/data/*/*.log"},
+					"multiline": map[string]interface{}{
+						"pattern": "^test",
+						"negate":  "true",
+					},
+				},
+            },
+		},
+		{
+			msg: "mutil path for extern path multiline config must have a multiline in the input config",
+			event: bus.Event{
+				"host": "1.2.3.4",
+				"kubernetes": common.MapStr{
+					"container": common.MapStr{
+						"name": "foobar",
+						"id":   "abc",
+					},
+					"annotations": testGetNestedAnnotations(common.MapStr{
+						"meitu.com.logs.foobar/extern_paths": "/data/*/*.log, /data1/*/*.log",
+						"meitu.com.logs.foobar/extern_path_conf.multiline.pattern": "^test",
+						"meitu.com.logs.foobar/extern_path_conf.multiline.negate": "true",
+					}),
+				},
+				"container": common.MapStr{
+					"name": "foobar",
+					"id":   "abc",
+				},
+			},
+			len: 2,
+			result: []common.MapStr{ 
+                common.MapStr{
+					"type": "docker",
+					"containers": map[string]interface{}{
+						"ids": []interface{}{"abc"},
+					},
+				},
+                common.MapStr{
+					"type": "log",
+                    "paths": []interface{} {
+                        "/node/path/data/*/*.log",
+                        "/node/path/data1/*/*.log",
+                    },
+					"multiline": map[string]interface{}{
+						"pattern": "^test",
+						"negate":  "true",
+					},
+				},
+            },
+		},
+		{
+			msg: "mutil extern path multiline config must have a multiline in the input config",
+			event: bus.Event{
+				"host": "1.2.3.4",
+				"kubernetes": common.MapStr{
+					"container": common.MapStr{
+						"name": "foobar",
+						"id":   "abc",
+					},
+					"annotations": testGetNestedAnnotations(common.MapStr{
+						"meitu.com.logs.foobar/extern_paths0": "/data0/*.log",
+						"meitu.com.logs.foobar/extern_path_conf0.multiline.pattern": "^test0",
+						"meitu.com.logs.foobar/extern_path_conf0.multiline.negate": "true",
+						"meitu.com.logs.foobar/extern_paths1": "/data1/*.log",
+						"meitu.com.logs.foobar/extern_path_conf1.multiline.pattern": "^test1",
+						"meitu.com.logs.foobar/extern_path_conf1.multiline.negate": "true",
+					}),
+				},
+				"container": common.MapStr{
+					"name": "foobar",
+					"id":   "abc",
+				},
+			},
+			len: 3,
+			result: []common.MapStr{ 
+                common.MapStr{
+					"type": "docker",
+					"containers": map[string]interface{}{
+						"ids": []interface{}{"abc"},
+					},
+				},
+                common.MapStr{
+					"type": "log",
+                    "paths": []interface{} {"/node/path/data0/*.log"},
+					"multiline": map[string]interface{}{
+						"pattern": "^test0",
+						"negate":  "true",
+					},
+				},
+                common.MapStr{
+					"type": "log",
+                    "paths": []interface{} {"/node/path/data1/*.log"},
+					"multiline": map[string]interface{}{
+						"pattern": "^test1",
+						"negate":  "true",
+					},
+				},
+            },
+		},
+		{
 			msg: "all config",
 			event: bus.Event{
 				"host": "1.2.3.4",
@@ -237,7 +365,7 @@ func TestNewK8sBuilder(t *testing.T) {
 						"meitu.com.logs/exclude_lines": "^test3, ^test4",
 						"meitu.com.logs/multiline.pattern": "^test5",
 						"meitu.com.logs/multiline.negate":  "true",
-						"meitu.com.logs.foobar/extern_path": "/data/*.log",
+						"meitu.com.logs.foobar/extern_paths": "/data/*.log",
 						"meitu.com.logs.foobar/extern_path_conf.include_lines": "^test6, ^test7",
 						"meitu.com.logs.foobar/extern_path_conf.exclude_lines": "^test8, ^test9",
 						"meitu.com.logs.foobar/extern_path_conf.multiline.pattern": "^test10",
@@ -289,6 +417,14 @@ func TestNewK8sBuilder(t *testing.T) {
                     Source: "/node/path/data",
                     Destination: "/data",
                 },
+                types.MountPoint {
+                    Source: "/node/path/data0",
+                    Destination: "/data0",
+                },
+                types.MountPoint {
+                    Source: "/node/path/data1",
+                    Destination: "/data1",
+                },
             },
         }
         return js, nil
@@ -305,7 +441,7 @@ func TestNewK8sBuilder(t *testing.T) {
 		}
 
 		cfgs := b.CreateConfig(test.event)
-		assert.Equal(t, len(cfgs), test.len, test.msg)
+		assert.Equal(t, test.len, len(cfgs), test.msg)
 
         for i := range cfgs {
 			config := common.MapStr{}

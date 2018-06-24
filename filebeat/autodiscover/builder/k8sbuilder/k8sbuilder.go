@@ -5,8 +5,8 @@ import (
 	"fmt"
     "path/filepath"
 
-    "github.com/docker/docker/api/types"
 	"github.com/elastic/beats/libbeat/autodiscover/builder"
+	"github.com/elastic/beats/libbeat/autodiscover/template"
 	"github.com/elastic/beats/libbeat/autodiscover"
 	"github.com/elastic/beats/libbeat/common"
 	"github.com/elastic/beats/libbeat/common/bus"
@@ -16,11 +16,14 @@ import (
 
 const (
 	Name = "k8sbuilder"
-    Prefix = "meitu.com"
 
 	multiline    = "multiline"
 	includeLines = "include_lines"
 	excludeLines = "exclude_lines"
+
+    externPaths = "extern_paths"
+    externPathConf = "extern_path_conf"
+    MaxExpathConfig = 5
 )
 
 func init() {
@@ -28,10 +31,10 @@ func init() {
 }
 
 type k8sBuilder struct {
+    Prefix string
     Key string
 
-    client *client.Client
-
+    dockerClient *client.Client
     conf config
 }
 
@@ -40,16 +43,17 @@ func NewK8sBuilder(cfg *common.Config) (autodiscover.Builder, error) {
 	if err := cfg.Unpack(&config); err != nil {
 		return nil, fmt.Errorf("unable to unpack k8sbuidler config due to error: %v", err)
 	}
-    //TODO add http client
-    c, err := client.NewClient(config.Host, config.DockerAPIVersion, nil, nil)
+    // connect docker for get extern path
+    cli, err := client.NewClient(config.Host, config.DockerAPIVersion, nil, nil)
     if err != nil {
         return nil, err
     }
     k8sb := & k8sBuilder {
-        conf: config,
-
+        Prefix: config.Prefix,
         Key: config.Key,
-        client: c,
+        dockerClient: cli,
+
+        conf: config,
     }
 
 	return k8sb, nil
@@ -57,25 +61,19 @@ func NewK8sBuilder(cfg *common.Config) (autodiscover.Builder, error) {
 
 // Create config based on input k8s builder in the bus event
 func (k8sb *k8sBuilder) CreateConfig(event bus.Event) []*common.Config {
-	// 1. 标准输出的日志的配置
 	mEvent := common.MapStr(event)
-
-    id, err := mEvent.GetValue("kubernetes.container.id")
-	if err != nil {
-        logp.Err("get event container.id failed %s", err)
-		return []*common.Config{}
-	}
 
     hints := k8sb.getHints(mEvent)
 
 	var configs []*common.Config
-	if confs, err := k8sb.GetStdConfigs(id.(string), mEvent, hints); err != nil {
+	// 1. 标准输出的日志的配置
+	if confs, err := k8sb.getStdConfigs(mEvent, hints); err != nil {
 		logp.Err("create stdout/stderr config failed. %s", err)
 	} else {
 		configs = append(configs, confs...)
 	}
 	// 2. 容器内文件目录的日志
-	if confs, err := k8sb.GetExPathConfig(id.(string), mEvent, hints); err != nil {
+	if confs, err := k8sb.getExpathConfig(mEvent, hints); err != nil {
 		logp.Err("create extern path config failed. %s", err)
 	} else {
 		configs = append(configs, confs...)
@@ -84,11 +82,10 @@ func (k8sb *k8sBuilder) CreateConfig(event bus.Event) []*common.Config {
 	return configs
 }
 
-func (k8sb *k8sBuilder) getHints(event common.MapStr) common.MapStr {
-    hints := common.MapStr{}
+func (k8sb *k8sBuilder) getHints(event common.MapStr) (hints common.MapStr) {
 	name, err := event.GetValue("kubernetes.container.name")
 	if err != nil {
-        logp.Err("NOT found container.name for event %s", event.String())
+        logp.Err("NOT found kubernetes.container.name from event %s", event.String())
         return hints
 	}
 
@@ -100,18 +97,20 @@ func (k8sb *k8sBuilder) getHints(event common.MapStr) common.MapStr {
 
 	ann, ok  := annInterface.(common.MapStr)
     if !ok {
+        logp.Err("kubernetes annotations is not common.MapStr type %s", event.String())
         return hints
     }
-    logp.Debug(Name, "get annotations %s", ann.String())
-
-    hints = builder.GenerateHints(ann, name.(string), Prefix)
-    logp.Debug(Name, "%s get hints %s",name.(string), hints.String())
+    hints = builder.GenerateHints(ann, name.(string), k8sb.Prefix)
+    logp.Debug(Name, "get hints '%s' for container '%s', annotations is %s", hints.String(), name.(string), ann.String())
     return hints
 }
 
-func (k8sb *k8sBuilder) GetStdConfigs(id string, event, hints common.MapStr) ([]*common.Config, error) {
-		// 获取docker的默认配置
-	config := getDefaultDockerConfig(id)
+func (k8sb *k8sBuilder) getStdConfigs(event, hints common.MapStr) ([]*common.Config, error) {
+    // 获取docker的默认配置
+	config, err := common.NewConfigFrom(k8sb.conf.DefaultStdConfig)
+    if err != nil {
+        return nil, fmt.Errorf("get default std config failed. %s", err)
+    }
 
 	// 获取处理配置
     processConfig := getProcessConfig(k8sb.Key, hints)
@@ -120,55 +119,121 @@ func (k8sb *k8sBuilder) GetStdConfigs(id string, event, hints common.MapStr) ([]
 		logp.Err("merge process config failed %s", err)
 	}
 
-	logp.Debug(Name, "%s stdout config %s", id, common.ConfigDebugString(config, false))
-	return []*common.Config{config}, nil
+	logp.Debug(Name, "stdout config %s", common.ConfigDebugString(config, false))
+    configs := template.ApplyConfigTemplate(bus.Event(event), []*common.Config{config})
+    for i := range configs {
+	    logp.Debug(Name, "alfter apply template stdout config %s", common.ConfigDebugString(configs[i], false))
+    }
+	return configs, nil
 }
 
 
-func (k8sb *k8sBuilder) GetExPathConfig(id string, event, hints common.MapStr) ([]*common.Config, error) {
-	// 增加额外路径解析
+func (k8sb *k8sBuilder) getExpathConfig(event, hints common.MapStr) ([]*common.Config, error) {
+    var ret []*common.Config
+
+    // 获取默认不增加index的配置
+    externPathKey := fmt.Sprintf("%s", externPaths)
+    externPathConfKey := fmt.Sprintf("%s.%s", k8sb.Key, externPathConf)
+    configs, err  := k8sb.getExpathConfigForIndex(event, hints, externPathKey, externPathConfKey)
+    if err != nil  {
+        return configs, err
+    }
+    if len(configs) > 0 {
+        ret = append(ret, configs...)
+    }
+
+    for i:=0; i < MaxExpathConfig; i++ {
+        externPathKey := fmt.Sprintf("%s%d", externPaths, i)
+        externPathConfKey := fmt.Sprintf("%s.%s%d", k8sb.Key, externPathConf, i)
+        configs, err  := k8sb.getExpathConfigForIndex(event, hints, externPathKey, externPathConfKey)
+        if err != nil  {
+            return configs, err
+        }
+        if len(configs) == 0 {
+            break
+        }
+        ret = append(ret, configs...)
+    }
+    return ret, nil
+}
+
+func (k8sb *k8sBuilder) getExpathConfigForIndex(event, hints common.MapStr, externPathKey, externPathConfKey string) ([]*common.Config, error) {
     var configs []*common.Config
-    path := builder.GetHintString(hints, k8sb.Key, "extern_path")
-    if len(path) == 0 {
+    paths := builder.GetHintAsList(hints, k8sb.Key, externPathKey)
+    if len(paths) == 0 {
         return configs, nil
     }
-    //TODO 支持多个路径
-	absPath := k8sb.getAbsPath(id, path)
-    if len(absPath) == 0 {
-        logp.Err("get abs path failed. id=%s path=%s", id, path)
-        return configs, nil
+
+	absPaths := k8sb.getAbsPaths(paths, event)
+    if len(absPaths) == 0 {
+        return configs, fmt.Errorf("can't get abstract path for %v", paths)
     }
-	config := k8sb.genConfig(hints, absPath)
-	configs = append(configs, config...)
-    return configs, nil
+
+	config, err := common.NewConfigFrom(k8sb.conf.DefaultExpathConfig)
+    if err != nil {
+        return configs, fmt.Errorf("get default std config failed. %s", err)
+    }
+
+	// 获取处理配置
+    processConfig := getProcessConfig(externPathConfKey, hints)
+    logp.Debug(Name, "hints %s extern_path_conf %s", hints.String(), processConfig.String())
+
+	if err := config.Merge(processConfig); err != nil {
+		logp.Err("merge process config failed %s, config=%s, processConfig=%s", err, common.ConfigDebugString(config, false), processConfig.String())
+	}
+
+	logp.Debug(Name, "extern path config %s", common.ConfigDebugString(config, false))
+    event.Put("extern_paths", absPaths)
+    configs = template.ApplyConfigTemplate(bus.Event(event), []*common.Config{config})
+    event.Delete("extern_paths")
+    for i := range configs {
+	    logp.Debug(Name, "alfter apply template extern path config %s", common.ConfigDebugString(configs[i], false))
+    }
+	return configs, nil
 }
 
-func (k8sb *k8sBuilder) getAbsPath(id, path string) string {
-    //TODO connect docker get path 
-    containerJSON, err := k8sb.client.ContainerInspect(context.Background(), id)
+func (k8sb *k8sBuilder) getAbsPaths(paths []string, event common.MapStr) []string {
+    if len(paths) == 0 {
+        return nil
+    }
+
+    id, err := event.GetValue("kubernetes.container.id")
+	if err != nil {
+        logp.Err("get kubernetes.container.id failed %s", err)
+		return nil
+	}
+
+    // TODO 需要使用一个超时时间的context
+    containerJSON, err := k8sb.dockerClient.ContainerInspect(context.Background(), id.(string))
     if err != nil {
         logp.Err("get container info failed %s", err)
-        return ""
+        return nil
     }
-    mountsMap := make(map[string]types.MountPoint)
+    mountsMap := make(map[string]string)
     for _, mount := range containerJSON.Mounts {
-        mountsMap[mount.Destination] = mount
+        mountsMap[mount.Destination] = mount.Source
     }
-    return hostDirOf(path, mountsMap)
+    ret := make([]string, len(paths))
+    for i := range paths {
+        ret[i] = hostDirOf(paths[i], mountsMap)
+    }
+    return ret
 }
 
-func hostDirOf(path string, mounts map[string]types.MountPoint) string {
+//FIXME 这个应该不能支持 /*/*/*.log 这种形式的拼接
+func hostDirOf(path string, mounts map[string]string) string {
     confPath := path
     for {
-        if point, ok := mounts[path]; ok {
+        if source, ok := mounts[path]; ok {
             if confPath == path {
-                return point.Source
+                return source
             } else {
                 relPath, err := filepath.Rel(path, confPath)
                 if err != nil {
-                    panic(err)
+                    logp.Err("filepath.Rel('%s', '%s'). %s", path, confPath, err)
+                    return ""
                 }
-                return fmt.Sprintf("%s/%s", point.Source, relPath)
+                return fmt.Sprintf("%s/%s", source, relPath)
             }
         }
         path = filepath.Dir(path)
@@ -179,35 +244,19 @@ func hostDirOf(path string, mounts map[string]types.MountPoint) string {
     return ""
 }
 
-func (k8sb *k8sBuilder) genConfig(hints common.MapStr, path string) []*common.Config {
-    config := getDefaultExternConfig(path)
-
-	// 获取处理配置
-    processConfig := getProcessConfig(k8sb.Key+".extern_path_conf", hints)
-    logp.Debug(Name, "hints %s extern_path_conf %s", hints.String(), processConfig.String())
-
-	if err := config.Merge(processConfig); err != nil {
-		logp.Err("merge process config failed %s, config=%s, processConfig=%s", err, common.ConfigDebugString(config, false), processConfig.String())
-	}
-
-	logp.Debug(Name, "extern config %s", common.ConfigDebugString(config, false))
-	return []*common.Config{config}
-}
-
-func getProcessConfig(prefix string, hints common.MapStr) common.MapStr {
+func getProcessConfig(key string, hints common.MapStr) common.MapStr {
     processConfig := common.MapStr{}
-	mline := builder.GetHintMapStr(hints, prefix, multiline)
-	if len(mline) != 0 {
+	if mline := builder.GetHintMapStr(hints, key, multiline); len(mline) != 0 {
 		processConfig.Put(multiline, mline)
 	}
-	if ilines := builder.GetHintAsList(hints, prefix, includeLines); len(ilines) != 0 {
+	if ilines := builder.GetHintAsList(hints, key, includeLines); len(ilines) != 0 {
 		processConfig.Put(includeLines, ilines)
 	}
-	if elines := builder.GetHintAsList(hints, prefix, excludeLines); len(elines) != 0 {
+	if elines := builder.GetHintAsList(hints, key, excludeLines); len(elines) != 0 {
 		processConfig.Put(excludeLines, elines)
 	}
 
-	logp.Debug(Name, "process config is '%s', prefix=%s hints=%s", processConfig.String(), prefix, hints.String())
+	logp.Debug(Name, "key '%s' process config is '%s', hints '%s'", key, processConfig.String(), hints.String())
     return processConfig
 }
 
