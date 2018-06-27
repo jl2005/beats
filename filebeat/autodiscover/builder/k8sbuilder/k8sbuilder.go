@@ -20,6 +20,7 @@ const (
 	multiline    = "multiline"
 	includeLines = "include_lines"
 	excludeLines = "exclude_lines"
+	topic = "topic"
 
     externPaths = "extern_paths"
     externPathConf = "extern_path_conf"
@@ -113,7 +114,7 @@ func (k8sb *k8sBuilder) getStdConfigs(event, hints common.MapStr) ([]*common.Con
     }
 
 	// 获取处理配置
-    processConfig := getProcessConfig(k8sb.Key, hints)
+    processConfig := getProcessConfig(k8sb.Key, hints,k8sb.conf.TopicPrefix, "stdlog")
 
 	if err := config.Merge(processConfig); err != nil {
 		logp.Err("merge process config failed %s", err)
@@ -175,7 +176,7 @@ func (k8sb *k8sBuilder) getExpathConfigForIndex(event, hints common.MapStr, exte
     }
 
 	// 获取处理配置
-    processConfig := getProcessConfig(externPathConfKey, hints)
+    processConfig := getProcessConfig(externPathConfKey, hints, k8sb.conf.TopicPrefix, externPathKey)
     logp.Debug(Name, "hints %s extern_path_conf %s", hints.String(), processConfig.String())
 
 	if err := config.Merge(processConfig); err != nil {
@@ -244,7 +245,7 @@ func hostDirOf(path string, mounts map[string]string) string {
     return ""
 }
 
-func getProcessConfig(key string, hints common.MapStr) common.MapStr {
+func  getProcessConfig(key string, hints common.MapStr, topicPrefix, logType string) common.MapStr {
     processConfig := common.MapStr{}
 	if mline := builder.GetHintMapStr(hints, key, multiline); len(mline) != 0 {
 		processConfig.Put(multiline, mline)
@@ -255,6 +256,12 @@ func getProcessConfig(key string, hints common.MapStr) common.MapStr {
 	if elines := builder.GetHintAsList(hints, key, excludeLines); len(elines) != 0 {
 		processConfig.Put(excludeLines, elines)
 	}
+    //TODO 这个放在这里是否合适
+	if t := builder.GetHintString(hints, key, topic); len(t) != 0 {
+		processConfig.Put("fields.topic", topicPrefix+"_${data.container.namespaces}_${data.container.name}_"+t)
+	} else {
+		processConfig.Put("fields.topic", topicPrefix+"_${data.container.namespaces}_${data.container.name}_"+logType)
+    }
 
 	logp.Debug(Name, "key '%s' process config is '%s', hints '%s'", key, processConfig.String(), hints.String())
     return processConfig
