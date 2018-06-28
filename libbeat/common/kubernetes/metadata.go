@@ -54,7 +54,9 @@ func (g *metaGenerator) PodMetadata(pod *Pod) common.MapStr {
 	annotationsMap := generateMapSubset(pod.Metadata.Annotations, g.IncludeAnnotations)
 	meta := common.MapStr{
 		"pod": common.MapStr{
+			"id":   pod.Metadata.UID,
 			"name": pod.Metadata.Name,
+			"ip":   pod.Status.PodIP,
 		},
 		"node": common.MapStr{
 			"name": pod.Spec.NodeName,
@@ -100,6 +102,13 @@ func (g *metaGenerator) ContainerMetadata(pod *Pod, container string) common.Map
 	// Add container details
 	podMeta["container"] = common.MapStr{
 		"name": container,
+	}
+
+	for _, c := range pod.Status.ContainerStatuses {
+		if c.Name == container {
+			id, runtime := c.GetContainerIDWithRuntime()
+			safemapstr.Put(podMeta, runtime+".id", id)
+		}
 	}
 
 	return podMeta
