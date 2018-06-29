@@ -12,6 +12,17 @@ import (
 	"meitu.com.logs/multiline.negate":  "true",
 	"meitu.com.logs/topic":  "mytopic",
 
+	"meitu.com.logs/format":  "json",
+	"meitu.com.logs/format.field":  "message",
+
+	"meitu.com.logs/format.type":  "regex",
+	"meitu.com.logs/format.pattern":  "$regex",
+
+    none|json|csv|nginx|apache2|regexp
+
+    log-pilot 中使用access表示外挂目录
+
+
     // 按照容器名称修改的配置.指定名称的配置会覆盖上面的配置
 	"meitu.com.logs.contain_name/include_lines": "^test5, ^test6",
 	"meitu.com.logs.contain_name/exclude_lines": "^test7, ^test8",
@@ -65,31 +76,15 @@ func defaultConfig() config {
 				"${data.container.id}",
 			},
 		},
-		//"fields_under_root": true,
-		"processors": []map[string]interface{}{
-			map[string]interface{}{
-				"mydecode_json_field": map[string]interface{}{
-					"field":     "message",
-					"max_depth": 10,
-				},
-			},
-		},
+		"fields_under_root": true,
 	}
 	conf.DefaultStdConfig, _ = common.NewConfigFrom(cfg)
 
 	// 外挂目录的配置
 	cfg = map[string]interface{}{
-		"type":  "log",
-		"paths": "${data.extern_paths}",
-		//"fields_under_root": true,
-		"processors": []map[string]interface{}{
-			map[string]interface{}{
-				"mydecode_json_field": map[string]interface{}{
-					"field":     "message",
-					"max_depth": 10,
-				},
-			},
-		},
+		"type":              "log",
+		"paths":             "${data.extern_paths}",
+		"fields_under_root": true,
 	}
 	conf.DefaultExpathConfig, _ = common.NewConfigFrom(cfg)
 	return conf

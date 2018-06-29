@@ -21,6 +21,7 @@ const (
 	includeLines = "include_lines"
 	excludeLines = "exclude_lines"
 	topic        = "topic"
+	format       = "format"
 
 	externPaths     = "extern_paths"
 	externPathConf  = "extern_path_conf"
@@ -260,6 +261,10 @@ func getProcessConfig(key string, hints common.MapStr, topicPrefix, logType stri
 		processConfig.Put("fields.topic", topicPrefix+"_${data.container.namespaces}_${data.container.name}_"+t)
 	} else {
 		processConfig.Put("fields.topic", topicPrefix+"_${data.container.namespaces}_${data.container.name}_"+logType)
+	}
+
+	if params := builder.GetHintMapStr(hints, key, format); len(params) != 0 {
+		processConfig.Put("processors", []common.MapStr{common.MapStr{"mydecode_field": params}})
 	}
 
 	logp.Debug(Name, "key '%s' process config is '%s', hints '%s'", key, processConfig.String(), hints.String())
