@@ -23,8 +23,9 @@ const (
 	topic        = "topic"
 	format       = "format"
 
-	externPaths     = "extern_paths"
-	externPathConf  = "extern_path_conf"
+	externPaths    = "extern_paths"
+	externPathConf = "extern_path_conf"
+
 	MaxExpathConfig = 5
 )
 
@@ -265,6 +266,8 @@ func getProcessConfig(key string, hints common.MapStr, topicPrefix, logType stri
 
 	if params := builder.GetHintMapStr(hints, key, format); len(params) != 0 {
 		processConfig.Put("processors", []common.MapStr{common.MapStr{"mydecode_field": params}})
+	} else {
+		processConfig.Put("processors", []common.MapStr{common.MapStr{"mydecode_field": common.MapStr{"type": "json"}}})
 	}
 
 	logp.Debug(Name, "key '%s' process config is '%s', hints '%s'", key, processConfig.String(), hints.String())
