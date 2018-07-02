@@ -37,7 +37,7 @@ type myDecodeFieldConfig struct {
 
 var (
 	// 默认解析json，将解析结果放到log字段下
-	defaultmyDecodeFieldConfig = &myDecodeFieldConfig{
+	defaultmyDecodeFieldConfig = myDecodeFieldConfig{
 		Type:             "json",
 		Field:            "message",
 		PreserveOldField: false,
@@ -57,14 +57,14 @@ func init() {
 
 func newMyDecodeField(c *common.Config) (processors.Processor, error) {
 	config := defaultmyDecodeFieldConfig
-	err := c.Unpack(config)
+	err := c.Unpack(&config)
 	if err != nil {
 		logp.Warn("Error unpacking config for mydecode_field")
 		return nil, fmt.Errorf("fail to unpack the mydecode_field configuration: %s", err)
 	}
 
 	decode := &myDecodeField{
-		config: config,
+		config: &config,
 	}
 	if err := decode.checkConfig(); err != nil {
 		return nil, err
