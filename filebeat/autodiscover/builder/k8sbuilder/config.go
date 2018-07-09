@@ -51,6 +51,8 @@ type config struct {
 	Key         string `config:"key"`
 	TopicPrefix string `config:"topic_prefix"`
 
+	SkipContainers []string `config:"skip_containers"`
+
 	Host             string `config:"host"`
 	DockerAPIVersion string `config:"docker_api_version"`
 
@@ -63,6 +65,8 @@ func defaultConfig() config {
 		Prefix:      "meitu.com",
 		Key:         "logs",
 		TopicPrefix: "k8s",
+
+		SkipContainers: []string{},
 
 		Host:             "unix:///var/run/docker.sock",
 		DockerAPIVersion: "1.23",

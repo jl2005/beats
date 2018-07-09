@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"regexp"
 
 	"github.com/docker/docker/client"
 	"github.com/elastic/beats/libbeat/autodiscover"
@@ -39,6 +40,8 @@ type k8sBuilder struct {
 
 	dockerClient *client.Client
 	conf         config
+
+	skipContainerRegexs []*regexp.Regexp
 }
 
 func NewK8sBuilder(cfg *common.Config) (autodiscover.Builder, error) {
@@ -59,16 +62,28 @@ func NewK8sBuilder(cfg *common.Config) (autodiscover.Builder, error) {
 		conf: config,
 	}
 
+	for _, str := range config.SkipContainers {
+		regex, err := regexp.Compile(str)
+		if err != nil {
+			return nil, err
+		}
+		k8sb.skipContainerRegexs = append(k8sb.skipContainerRegexs, regex)
+	}
+
 	return k8sb, nil
 }
 
 // Create config based on input k8s builder in the bus event
 func (k8sb *k8sBuilder) CreateConfig(event bus.Event) []*common.Config {
+	var configs []*common.Config
 	mEvent := common.MapStr(event)
+
+	if k8sb.skipContainer(mEvent) {
+		return configs
+	}
 
 	hints := k8sb.getHints(mEvent)
 
-	var configs []*common.Config
 	// 1. 标准输出的日志的配置
 	if confs, err := k8sb.getStdConfigs(mEvent, hints); err != nil {
 		logp.Err("create stdout/stderr config failed. %s", err)
@@ -83,6 +98,20 @@ func (k8sb *k8sBuilder) CreateConfig(event bus.Event) []*common.Config {
 	}
 
 	return configs
+}
+
+func (k8sb *k8sBuilder) skipContainer(event common.MapStr) bool {
+	name, err := event.GetValue("kubernetes.container.name")
+	if err != nil {
+		logp.Err("NOT found kubernetes.container.name from event %s", event.String())
+		return false
+	}
+	for _, regex := range k8sb.skipContainerRegexs {
+		if regex.Match([]byte(name.(string))) {
+			return true
+		}
+	}
+	return false
 }
 
 func (k8sb *k8sBuilder) getHints(event common.MapStr) (hints common.MapStr) {
