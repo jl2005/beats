@@ -88,11 +88,11 @@ func (a *Autodiscover) Start() {
 	logp.Info("Starting autodiscover manager")
 	a.listener = a.bus.Subscribe(a.adapter.EventFilter()...)
 
+	go a.worker()
+
 	for _, provider := range a.providers {
 		provider.Start()
 	}
-
-	go a.worker()
 }
 
 func (a *Autodiscover) worker() {
