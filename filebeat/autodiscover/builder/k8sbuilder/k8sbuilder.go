@@ -78,7 +78,7 @@ func (k8sb *k8sBuilder) CreateConfig(event bus.Event) []*common.Config {
 	var configs []*common.Config
 	mEvent := common.MapStr(event)
 
-	id, err := event.GetValue("kubernetes.container.id")
+	id, err := mEvent.GetValue("kubernetes.container.id")
 	if err != nil {
 		logp.Err("get kubernetes.container.id failed %s", err)
 		return configs
