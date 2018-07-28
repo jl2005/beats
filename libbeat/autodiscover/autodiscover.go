@@ -197,6 +197,8 @@ func (a *Autodiscover) handleStop(event bus.Event) bool {
 
 		if !a.runners.Has(hash) {
 			logp.Debug(debugK, "Config %v is not running", config)
+			// when restart, configs and runner is not match
+			delete(a.configs, hash)
 			continue
 		}
 

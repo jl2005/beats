@@ -78,6 +78,16 @@ func (k8sb *k8sBuilder) CreateConfig(event bus.Event) []*common.Config {
 	var configs []*common.Config
 	mEvent := common.MapStr(event)
 
+	id, err := event.GetValue("kubernetes.container.id")
+	if err != nil {
+		logp.Err("get kubernetes.container.id failed %s", err)
+		return configs
+	}
+	if len(id.(string)) == 0 {
+		logp.Err("kubernetes.container.id is empty")
+		return configs
+	}
+
 	if k8sb.skipContainer(mEvent) {
 		return configs
 	}
@@ -154,7 +164,7 @@ func (k8sb *k8sBuilder) getStdConfigs(event, hints common.MapStr) ([]*common.Con
 	logp.Debug(Name, "stdout config %s", common.ConfigDebugString(config, false))
 	configs := template.ApplyConfigTemplate(bus.Event(event), []*common.Config{config})
 	for i := range configs {
-		logp.Debug(Name, "alfter apply template stdout config %s", common.ConfigDebugString(configs[i], false))
+		logp.Debug(Name, "after apply template stdout config %s", common.ConfigDebugString(configs[i], false))
 	}
 	return configs, nil
 }
@@ -218,7 +228,7 @@ func (k8sb *k8sBuilder) getExpathConfigForIndex(event, hints common.MapStr, exte
 	configs = template.ApplyConfigTemplate(bus.Event(event), []*common.Config{config})
 	event.Delete("extern_paths")
 	for i := range configs {
-		logp.Debug(Name, "alfter apply template extern path config %s", common.ConfigDebugString(configs[i], false))
+		logp.Debug(Name, "after apply template extern path config %s", common.ConfigDebugString(configs[i], false))
 	}
 	return configs, nil
 }
