@@ -1,7 +1,9 @@
 package bus
 
 import (
+	"fmt"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -83,4 +85,25 @@ func TestListenerClose(t *testing.T) {
 	// Channel was closed, we get an empty event
 	event = <-listener.Events()
 	assert.Equal(t, event, Event(nil))
+}
+
+func TestEmitNum(t *testing.T) {
+	bus := New("name")
+	listener := bus.Subscribe()
+	var stop bool
+	go func() {
+		time.Sleep(time.Second * 10)
+		stop = true
+		for i := 0; i < 101; i++ {
+			event1 := <-listener.Events()
+			assert.Equal(t, event1, Event{"event": fmt.Sprintf("event %d", i)})
+		}
+	}()
+	for i := 0; i < 101; i++ {
+		bus.Publish(Event{"event": fmt.Sprintf("event %d", i)})
+	}
+	if !stop {
+		t.Error("publish not block")
+	}
+	t.Error("already publish not block")
 }
