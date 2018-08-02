@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/elastic/beats/libbeat/common"
+	"github.com/elastic/beats/libbeat/logp"
 
 	"github.com/pkg/errors"
 )
@@ -105,7 +106,8 @@ func (p *DockerJSON) Next() (Message, error) {
 		if strings.HasPrefix(string(message.Content), "{") {
 			message, err = parseDockerJSONLog(message, &dockerLine)
 			if err != nil {
-				return message, err
+				logp.Warn("skip message for %s message=%s", err, message.Content)
+				continue
 			}
 			// Handle multiline messages, join lines that don't end with \n
 			for p.partial && message.Content[len(message.Content)-1] != byte('\n') {
@@ -115,12 +117,17 @@ func (p *DockerJSON) Next() (Message, error) {
 				}
 				next, err = parseDockerJSONLog(next, &dockerLine)
 				if err != nil {
-					return message, err
+					logp.Warn("skip message for %s message=%s", err, next.Content)
+					continue
 				}
 				message.Content = append(message.Content, next.Content...)
 			}
 		} else {
 			message, err = parseCRILog(message, &crioLine)
+			if err != nil {
+				logp.Warn("skip message for %s message=%s", err, message.Content)
+				continue
+			}
 		}
 
 		if p.stream != "all" && p.stream != dockerLine.Stream && p.stream != crioLine.Stream {
