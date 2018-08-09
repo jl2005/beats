@@ -122,6 +122,12 @@ func (a *gapCountACK) ackLoop() {
 		case <-a.done:
 			closing = true
 			a.done = nil
+			a.lst.Lock()
+			if a.lst.head == a.lst.tail {
+				a.lst.Unlock()
+				return
+			}
+			a.lst.Unlock()
 
 		case <-a.pipeline.ackDone:
 			return
